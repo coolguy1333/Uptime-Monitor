@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Uptime Monitor</title>
+  <meta name="description" content="Self-hosted uptime and status monitoring">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="currentColor"/><path d="M5 17h5l3-7 5 13 3-6h6" fill="none" stroke="var(--bg)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <h1 id="siteTitle">Uptime Monitor</h1>
+    </div>
+    <nav class="actions">
+      <button id="themeBtn" class="icon-btn" title="Toggle theme" aria-label="Toggle theme">◐</button>
+      <button id="settingsBtn" class="btn ghost" title="Settings" hidden>⚙<span class="lbl"> Settings</span></button>
+      <button id="addBtn" class="btn primary" title="Add monitor" hidden>+<span class="lbl"> Add monitor</span></button>
+      <span id="userChip" class="user-chip" hidden></span>
+      <button id="loginBtn" class="btn ghost">Sign in</button>
+    </nav>
+  </header>
+
+  <main id="app">
+    <section id="locked" class="card locked" hidden>
+      <h2>This dashboard is private</h2>
+      <p>Sign in to view monitors.</p>
+      <button class="btn primary" data-action="login">Sign in</button>
+    </section>
+
+    <section id="overall" class="overall" aria-live="polite">
+      <div class="overall-dot"></div>
+      <div>
+        <div class="overall-title">Loading…</div>
+        <div class="overall-sub"></div>
+      </div>
+    </section>
+
+    <section id="self" class="card self" hidden></section>
+
+    <section id="monitorSection" hidden>
+      <div class="section-head">
+        <h2>Monitors</h2>
+        <div class="filters">
+          <input id="search" type="search" placeholder="Filter by name…" aria-label="Filter monitors">
+          <select id="statusFilter" aria-label="Filter by status">
+            <option value="">All</option>
+            <option value="up">Up</option>
+            <option value="down">Down</option>
+            <option value="pending">Pending</option>
+            <option value="paused">Paused</option>
+          </select>
+        </div>
+      </div>
+      <div id="monitors" class="monitor-list"></div>
+      <div id="empty" class="card empty" hidden>
+        <p>No monitors yet.</p>
+        <button class="btn primary" data-action="add">+ Add your first monitor</button>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span id="footerInfo"></span>
+    <span>·</span>
+    <a href="api/health" target="_blank" rel="noopener">health</a>
+  </footer>
+
+  <!-- Add / edit monitor -->
+  <dialog id="monitorDialog">
+    <form id="monitorForm" method="dialog" novalidate>
+      <h2 id="monitorDialogTitle">Add monitor</h2>
+      <div class="grid2">
+        <label class="span2">Name
+          <input name="name" required maxlength="100" placeholder="My website">
+        </label>
+        <label>Type
+          <select name="type">
+            <option value="http">Website (HTTP/HTTPS)</option>
+            <option value="ping">IP / host (ping)</option>
+            <option value="tcp">TCP port</option>
+          </select>
+        </label>
+        <label data-show="tcp">Port
+          <input name="port" type="number" min="1" max="65535" placeholder="22">
+        </label>
+        <label class="span2"><span id="targetLabel">URL</span>
+          <input name="target" required placeholder="https://example.com" autocomplete="off" spellcheck="false">
+        </label>
+        <label>Check every (seconds)
+          <input name="interval" type="number" min="10" max="86400" value="60">
+        </label>
+        <label>Timeout (seconds)
+          <input name="timeout" type="number" min="1" max="120" value="10">
+        </label>
+        <label>Retries before "down"
+          <input name="retries" type="number" min="0" max="10" value="1">
+        </label>
+        <label data-show="http">Method
+          <select name="method"><option>GET</option><option>HEAD</option></select>
+        </label>
+        <label data-show="http">Accepted status codes
+          <input name="acceptedStatus" value="200-399" placeholder="200-399">
+        </label>
+        <label data-show="http">Keyword (optional)
+          <input name="keyword" maxlength="200" placeholder="Text that must appear on the page">
+        </label>
+        <div class="checks span2">
+          <label class="check" data-show="http"><input type="checkbox" name="invertKeyword"> Keyword must be <b>absent</b></label>
+          <label class="check" data-show="http"><input type="checkbox" name="followRedirects" checked> Follow redirects</label>
+          <label class="check" data-show="http"><input type="checkbox" name="ignoreTls"> Ignore TLS/SSL errors</label>
+          <label class="check"><input type="checkbox" name="paused"> Paused</label>
+        </div>
+      </div>
+      <p class="form-error" role="alert"></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn ghost" data-close>Cancel</button>
+        <button type="submit" class="btn primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Login -->
+  <dialog id="loginDialog">
+    <div class="login-box">
+      <h2>Admin sign-in</h2>
+      <a id="googleLogin" class="btn google-btn" href="api/auth/google" hidden>
+        <svg viewBox="0 0 48 48" width="18" height="18" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>
+        Sign in with Google
+      </a>
+      <p id="loginGoogleHint" class="hint" hidden>Only accounts listed in <code>ADMIN_EMAILS</code> can sign in.</p>
+      <div id="loginDivider" class="divider" hidden><span>or</span></div>
+      <form id="loginForm" method="dialog" hidden>
+        <label>Admin password
+          <input name="password" type="password" autocomplete="current-password" required>
+        </label>
+        <p class="hint">Set with <code>ADMIN_PASSWORD</code>, or auto-generated in <code>data/admin-password.txt</code> on first start.</p>
+        <p class="form-error" role="alert"></p>
+        <div class="dialog-actions">
+          <button type="button" class="btn ghost" data-close>Cancel</button>
+          <button type="submit" class="btn primary">Log in</button>
+        </div>
+      </form>
+      <p id="loginNone" class="hint" hidden>No sign-in method is enabled. Set <code>GOOGLE_CLIENT_ID</code>/<code>GOOGLE_CLIENT_SECRET</code> or <code>PASSWORD_LOGIN=true</code>.</p>
+      <div id="loginGoogleOnlyActions" class="dialog-actions" hidden>
+        <button type="button" class="btn ghost" data-close>Cancel</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Settings -->
+  <dialog id="settingsDialog">
+    <form id="settingsForm" method="dialog">
+      <h2>Settings</h2>
+      <label>Site title
+        <input name="title" maxlength="100">
+      </label>
+      <label>Notification webhooks <span class="muted">(one per line — Discord, Slack, ntfy or any URL that accepts JSON)</span>
+        <textarea name="webhooks" rows="3" spellcheck="false" placeholder="https://discord.com/api/webhooks/…"></textarea>
+      </label>
+      <p class="hint" id="envWebhookHint" hidden>Webhooks from <code>NOTIFY_WEBHOOK_URL</code> are also used.</p>
+      <div class="checks">
+        <label class="check"><input type="checkbox" name="publicDashboard"> Public dashboard (anyone can view status without logging in)</label>
+        <label class="check"><input type="checkbox" name="publicShowTargets"> Show URLs / IP addresses to public visitors</label>
+      </div>
+      <div class="auth-info" id="authInfo"></div>
+      <div class="settings-tools">
+        <button type="button" class="btn ghost small" id="testNotifyBtn">Send test notification</button>
+        <a class="btn ghost small" href="api/export" download>Export monitors</a>
+        <label class="btn ghost small file-btn">Import monitors<input type="file" id="importFile" accept="application/json,.json" hidden></label>
+      </div>
+      <p class="form-error" role="alert"></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn ghost" id="logoutBtn">Log out</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn ghost" data-close>Cancel</button>
+        <button type="submit" class="btn primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

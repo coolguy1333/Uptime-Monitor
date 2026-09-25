@@ -1,0 +1,25 @@
+services:
+  uptime-monitor:
+    build: .
+    image: uptime-monitor:latest
+    container_name: uptime-monitor
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # Leave empty to auto-generate one (see: docker compose logs uptime-monitor)
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      SITE_TITLE: ${SITE_TITLE:-Uptime Monitor}
+      TZ: ${TZ:-UTC}
+      # Google sign-in (docs/GOOGLE_SIGNIN.md)
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      # NOTIFY_WEBHOOK_URL: https://discord.com/api/webhooks/...
+      # TRUST_PROXY: "true"   # set when running behind Caddy / nginx / Traefik
+    volumes:
+      - uptime-data:/data
+
+volumes:
+  uptime-data:

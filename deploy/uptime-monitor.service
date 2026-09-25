@@ -1,0 +1,28 @@
+[Unit]
+Description=Uptime Monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=uptime
+Group=uptime
+WorkingDirectory=/opt/uptime-monitor
+EnvironmentFile=-/etc/uptime-monitor.env
+Environment=NODE_ENV=production
+Environment=DATA_DIR=/var/lib/uptime-monitor
+ExecStart=/usr/bin/env node /opt/uptime-monitor/server.js
+Restart=always
+RestartSec=5
+
+# Hardening. CAP_NET_RAW lets the `ping` checks work as a non-root user.
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/uptime-monitor
+
+[Install]
+WantedBy=multi-user.target

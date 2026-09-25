@@ -1,0 +1,5 @@
+# Example Caddy reverse proxy with automatic HTTPS.
+# Also set TRUST_PROXY=true for Uptime Monitor.
+status.example.com {
+    reverse_proxy 127.0.0.1:3000
+}
