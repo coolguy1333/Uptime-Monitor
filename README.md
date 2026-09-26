@@ -17,6 +17,7 @@ A small, self-hosted uptime monitor and status page. It watches **websites**, **
 | **Uptime stats** | 24 h / 7 d / 30 d / 90 d uptime per monitor, 90-day daily bars, last-24 h response-time chart, event history. |
 | **Alerts** | Webhooks for Discord, Slack, ntfy or any JSON endpoint when something goes down, comes back up, a TLS certificate is about to expire, or the monitor restarts after an outage. |
 | **Status page** | Public read-only dashboard (optional); IPs/URLs hidden from the public by default. |
+| **Multi-server** | Deploy it on several servers and point them at each other (`PEERS`); every instance shows all of them on one dashboard, each with its own uptime, and no server is a single point of failure for the others' visibility. |
 | **Sign-in** | **Sign in with Google** (restricted to the accounts in `ADMIN_EMAILS`) and/or an admin password. Sessions survive restarts. |
 | **Extras** | Retries before marking down, per-monitor intervals, dark/light theme, mobile layout, export/import, `/api/health` endpoint, JSON API. |
 
@@ -90,6 +91,8 @@ All settings are optional environment variables. You can also put them in a `.en
 | `NOTIFY_WEBHOOK_URL` | | Comma-separated webhook URLs, used in addition to those set in the UI. |
 | `TRUST_PROXY` | `false` | Set `true` behind Caddy/nginx/Traefik/Cloudflare Tunnel so client IPs and HTTPS are detected correctly. |
 | `ALLOW_EMBED` | `false` | Allow the dashboard to be shown in an iframe (Homepage, Heimdall, Home Assistant…). |
+| `PEERS` | | Comma-separated URLs of other Uptime Monitor servers to federate with (multi-server dashboard). |
+| `PEER_TOKEN` | | Shared secret between federated servers. Recommended whenever `PEERS` is set. |
 
 More detail — monitor options, notifications, data files — is in **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)**.
 
@@ -111,6 +114,7 @@ lib/self.js          self-uptime heartbeat and outage detection
 lib/store.js         JSON storage, uptime maths, history retention
 lib/notify.js        webhook notifications
 lib/auth.js          Google sign-in, admin password, sessions
+lib/peers.js         multi-server federation (polls/serves /api/peer-status)
 public/              dashboard (plain HTML/CSS/JS)
 deploy/              systemd unit, installer, Caddy and nginx examples
 Dockerfile, docker-compose.yml

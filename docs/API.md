@@ -13,12 +13,15 @@ Requests that change data must send `Content-Type: application/json` (this also 
 
 Read endpoints (`/api/status`, `GET /api/monitors/:id`) are public when *Public dashboard* is on; otherwise they need auth. Targets (URLs/IPs) are only included for admins, or when *Show URLs / IP addresses to public visitors* is on.
 
+`/api/peer-status` uses a separate `Authorization: Bearer <PEER_TOKEN>` (not the admin password) — see [Peer servers](CONFIGURATION.md#peer-servers-multi-server--federation).
+
 ## Endpoints
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | GET | `/api/health` | — | Liveness check. Always public. |
-| GET | `/api/status` | view | Everything the dashboard shows: self uptime, counts, all monitors. |
+| GET | `/api/peer-status` | peer token | What a federated peer polls (see [Peer servers](CONFIGURATION.md#peer-servers-multi-server--federation)): this server's own name, version and self-uptime. Public if `PEER_TOKEN` is unset, otherwise needs `Authorization: Bearer <PEER_TOKEN>`. |
+| GET | `/api/status` | view | Everything the dashboard shows: self uptime, counts, all monitors, peers. |
 | GET | `/api/monitors` | view | All monitors (same objects as in `/api/status`). |
 | GET | `/api/monitors/:id` | view | One monitor with 24 h response-time series, 90 daily buckets and recent events. |
 | POST | `/api/monitors` | admin | Create a monitor. |
@@ -118,8 +121,20 @@ curl -s $URL/api/status | jq -r '.monitors[] | "\(.status)\t\(.name)"'
       "recent": [{ "t": 1790308523589, "ok": true, "ms": 84.2, "msg": "HTTP 200" }],
       "cert": { "validTo": "2026-12-01T00:00:00.000Z", "daysLeft": 67, "issuer": "Let's Encrypt" }
     }
+  ],
+  "peers": [
+    {
+      "url": "https://status-eu.example.com",
+      "name": "EU",
+      "reachable": true,
+      "error": null,
+      "checkedAt": 1790308523589,
+      "version": "1.2.0",
+      "self": { "status": "up", "uptime": { "24h": 100, "7d": 99.97, "30d": 100, "90d": 100 }, "...": "same shape as the top-level self" },
+      "observedUptime": { "24h": 100, "7d": 100, "30d": 99.9, "90d": null }
+    }
   ]
 }
 ```
 
-Times are Unix milliseconds. Uptime values are percentages, or `null` when there is no data for that window.
+Times are Unix milliseconds. Uptime values are percentages, or `null` when there is no data for that window. `peers` is only present when `PEERS` is configured (see [Peer servers](CONFIGURATION.md#peer-servers-multi-server--federation)); `self` inside a peer entry is that peer's own last-reported self-uptime (kept even if `reachable` is currently `false`), and `observedUptime` is that peer's uptime as seen from this server's own polling.

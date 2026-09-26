@@ -1,0 +1,62 @@
+{
+  "type": "app",
+  "health": "/api/health",
+  "memory_mb": 256,
+  "env": [
+    {
+      "name": "ADMIN_PASSWORD",
+      "description": "Password for the admin account. Also works as an API bearer token.",
+      "secret": true,
+      "required": true
+    },
+    {
+      "name": "SITE_TITLE",
+      "description": "Title shown on the status page.",
+      "default": "Uptime Monitor"
+    },
+    {
+      "name": "PUBLIC_DASHBOARD",
+      "description": "Show the dashboard without signing in.",
+      "default": "true",
+      "choices": ["true", "false"]
+    },
+    {
+      "name": "PASSWORD_LOGIN",
+      "description": "Allow signing in with the admin password. Defaults to on, or off if Google sign-in is configured.",
+      "choices": ["true", "false"]
+    },
+    {
+      "name": "GOOGLE_CLIENT_ID",
+      "description": "Google OAuth client ID. With the secret below, enables Sign in with Google."
+    },
+    {
+      "name": "GOOGLE_CLIENT_SECRET",
+      "description": "Google OAuth client secret.",
+      "secret": true
+    },
+    {
+      "name": "ADMIN_EMAILS",
+      "description": "Comma-separated Google accounts allowed to sign in (@domain.com for a whole Workspace domain)."
+    },
+    {
+      "name": "NOTIFY_WEBHOOK_URL",
+      "description": "Comma-separated webhook URLs (Discord, Slack, ntfy, or any JSON endpoint) for down/up/certificate alerts.",
+      "secret": true
+    },
+    {
+      "name": "ALLOW_EMBED",
+      "description": "Allow the dashboard to be shown in an iframe (Homepage, Heimdall, Home Assistant, ...).",
+      "default": "false",
+      "choices": ["true", "false"]
+    },
+    {
+      "name": "PEERS",
+      "description": "Comma-separated URLs of other Uptime Monitor deployments to federate with, shown as \"Other servers\" on the dashboard."
+    },
+    {
+      "name": "PEER_TOKEN",
+      "description": "Shared secret used between federated servers (same value on every server in the group). Recommended whenever PEERS is set.",
+      "secret": true
+    }
+  ]
+}
