@@ -328,7 +328,7 @@ function serveStatic(req, res, pathname) {
 // ---------------------------------------------------------------- routes
 
 async function handleApi(req, res, url) {
-  const user = auth.user(req);
+  const user = auth.user(req, clientIp(req));
   const authed = Boolean(user);
   const method = req.method;
   const p = url.pathname.replace(/\/+$/, '') || '/';
