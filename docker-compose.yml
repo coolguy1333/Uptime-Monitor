@@ -18,6 +18,9 @@ services:
       PUBLIC_URL: ${PUBLIC_URL:-}
       # NOTIFY_WEBHOOK_URL: https://discord.com/api/webhooks/...
       # TRUST_PROXY: "true"   # set when running behind Caddy / nginx / Traefik
+      # Multi-server: point at your other Uptime Monitor deployments (not this one)
+      # PEERS: https://status-eu.example.com,https://status-us.example.com
+      # PEER_TOKEN: some-long-shared-secret   # same value on every server
     volumes:
       - uptime-data:/data
 

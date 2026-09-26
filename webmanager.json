@@ -48,6 +48,15 @@
       "description": "Allow the dashboard to be shown in an iframe (Homepage, Heimdall, Home Assistant, ...).",
       "default": "false",
       "choices": ["true", "false"]
+    },
+    {
+      "name": "PEERS",
+      "description": "Comma-separated URLs of other Uptime Monitor deployments to federate with, shown as \"Other servers\" on the dashboard."
+    },
+    {
+      "name": "PEER_TOKEN",
+      "description": "Shared secret used between federated servers (same value on every server in the group). Recommended whenever PEERS is set.",
+      "secret": true
     }
   ]
 }

@@ -21,6 +21,7 @@ const { Scheduler } = require('./lib/scheduler');
 const { SelfTracker } = require('./lib/self');
 const { Auth, AuthError } = require('./lib/auth');
 const { HOST_RE } = require('./lib/checks');
+const { PeerHub } = require('./lib/peers');
 
 const truthy = v => /^(1|true|yes|on)$/i.test(String(v || '').trim());
 
@@ -33,6 +34,11 @@ const TRUST_PROXY = truthy(process.env.TRUST_PROXY);
 const ALLOW_EMBED = truthy(process.env.ALLOW_EMBED);
 const PUBLIC_URL = (process.env.PUBLIC_URL || '').trim().replace(/\/+$/, '');
 const PUBLIC_DIR = path.join(__dirname, 'public');
+// Other Uptime Monitor instances to federate with (see docs/CONFIGURATION.md#peer-servers).
+// A URL matching our own PUBLIC_URL is dropped so a copy-pasted PEERS list can't make an
+// instance poll itself.
+const PEER_URLS = (process.env.PEERS || '').split(',').map(s => s.trim().replace(/\/+$/, '')).filter(Boolean).filter(u => u !== PUBLIC_URL);
+const PEER_TOKEN = (process.env.PEER_TOKEN || '').trim();
 
 const settingsDefaults = {};
 if (process.env.SITE_TITLE) settingsDefaults.title = process.env.SITE_TITLE;
@@ -44,6 +50,10 @@ const scheduler = new Scheduler(store, notifier);
 const selfTracker = new SelfTracker(store, notifier);
 const auth = new Auth(DATA_DIR);
 auth.revokeDisallowed();
+const peerHub = new PeerHub(store, { urls: PEER_URLS, token: PEER_TOKEN });
+if (PEER_URLS.length && !PEER_TOKEN) {
+  console.warn('[peers] PEERS is set without PEER_TOKEN - /api/peer-status is public and unauthenticated. Set PEER_TOKEN to restrict it to your own servers.');
+}
 
 if (store.firstRun) {
   store.monitors = [
@@ -236,6 +246,23 @@ function selfSummary(authed) {
   return out;
 }
 
+// One entry per configured peer: what it last reported about itself (`self`, absent until the
+// first successful poll, kept around afterwards even if the peer later goes unreachable), plus
+// the uptime of that peer as observed from here (`observedUptime` - what fraction of our polls
+// reached it), which keeps working even if the peer's own self-tracking data can't be reached.
+function peerSummaries() {
+  return peerHub.entries().map(p => ({
+    url: p.url,
+    name: p.name,
+    reachable: p.reachable,
+    error: p.error,
+    checkedAt: p.checkedAt,
+    version: p.version,
+    self: p.self,
+    observedUptime: uptimeSet(w => store.uptime(p.id, w)),
+  }));
+}
+
 // ---------------------------------------------------------------- http plumbing
 
 const MIME = {
@@ -345,6 +372,13 @@ async function handleApi(req, res, url) {
     return send(res, 200, { status: 'ok', uptime: Math.round(process.uptime()), version: VERSION, time: new Date().toISOString() });
   }
 
+  // What sibling instances poll to federate with this one. Public unless PEER_TOKEN is set;
+  // never includes monitors, targets or host details - only this server's own uptime record.
+  if (p === '/api/peer-status' && (method === 'GET' || method === 'HEAD')) {
+    if (!peerHub.authorizeIncoming(req, clientIp(req))) return send(res, 401, { error: 'Invalid or missing peer token' });
+    return send(res, 200, { name: store.settings.title, version: VERSION, time: Date.now(), self: selfSummary(false) });
+  }
+
   if (p === '/api/status' && method === 'GET') {
     const base = {
       title: store.settings.title,
@@ -359,7 +393,7 @@ async function handleApi(req, res, url) {
     const monitors = store.monitors.map(m => monitorSummary(m, authed));
     const counts = { up: 0, down: 0, pending: 0, paused: 0 };
     for (const m of monitors) counts[m.status] = (counts[m.status] || 0) + 1;
-    return send(res, 200, { ...base, self: selfSummary(authed), counts, monitors });
+    return send(res, 200, { ...base, self: selfSummary(authed), counts, monitors, peers: peerSummaries() });
   }
 
   // ---- password login
@@ -560,6 +594,7 @@ server.listen(PORT, HOST, () => {
   // Start monitoring only once the web server is up.
   selfTracker.start();
   scheduler.start();
+  if (PEER_URLS.length) peerHub.start();
   setInterval(() => store.saveHistory(), 30e3).unref();
 
   const shown = HOST === '0.0.0.0' || HOST === '::' ? 'localhost' : HOST;
@@ -567,6 +602,7 @@ server.listen(PORT, HOST, () => {
   if (PUBLIC_URL) console.log(`Public URL: ${PUBLIC_URL}`);
   console.log(`Data directory: ${DATA_DIR}`);
   console.log(`Monitoring ${store.monitors.length} target(s).`);
+  if (PEER_URLS.length) console.log(`Federated with ${PEER_URLS.length} peer server(s): ${PEER_URLS.join(', ')}`);
   const m = auth.methods();
   if (m.google) {
     console.log(`Google sign-in: enabled for ${auth.google.admins.join(', ') || '(nobody - set ADMIN_EMAILS)'}`);
@@ -590,6 +626,7 @@ function shutdown(signal) {
   shuttingDown = true;
   console.log(`Received ${signal}, saving data and shutting down...`);
   scheduler.stop();
+  peerHub.stop();
   store.saveHistory(true);
   selfTracker.shutdown();
   server.close(() => process.exit(0));

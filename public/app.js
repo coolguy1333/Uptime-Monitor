@@ -175,6 +175,42 @@ function renderSelf(d) {
   state.selfBase = { uptime: s.processUptime, at: Date.now() };
 }
 
+function renderPeers(d) {
+  const el = $('#peers');
+  const peers = d.peers || [];
+  el.hidden = peers.length === 0;
+  if (!peers.length) return;
+  $('#peerList').innerHTML = peers.map(peerCard).join('');
+}
+
+function peerCard(p) {
+  const s = p.self;
+  const uptime = s ? s.uptime : p.observedUptime;
+  const label = p.name || p.url;
+  const status = p.reachable
+    ? (s ? `Online for ${duration(s.processUptime)}` : 'Reachable')
+    : `Unreachable${p.checkedAt ? ` — last seen ${ago(p.checkedAt)}` : ''}${p.error ? ` (${p.error})` : ''}`;
+  return `
+  <article class="card peer">
+    <div class="peer-top">
+      <div class="peer-id">
+        <span class="dot ${p.reachable ? 'up' : 'down'}" title="${esc(p.reachable ? 'reachable' : 'unreachable')}"></span>
+        <div>
+          <div class="peer-name">${esc(label)}</div>
+          <div class="peer-status muted">${esc(status)}</div>
+        </div>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="k">24h</div><div class="v">${pct(uptime['24h'])}</div></div>
+        <div class="stat"><div class="k">7d</div><div class="v">${pct(uptime['7d'])}</div></div>
+        <div class="stat"><div class="k">30d</div><div class="v">${pct(uptime['30d'])}</div></div>
+        <div class="stat"><div class="k">90d</div><div class="v">${pct(uptime['90d'])}</div></div>
+      </div>
+    </div>
+    ${s ? `<div>${daysBars(s.daily, { label: false })}</div>` : '<p class="muted">No status reported by this peer yet.</p>'}
+  </article>`;
+}
+
 function monitorRow(m) {
   const open = state.open.has(m.id);
   const sub = m.target ? `<span class="badge">${typeLabel[m.type]}</span>${esc(targetText(m))}` : `<span class="badge">${typeLabel[m.type]}</span>${esc(statusText(m))}`;
@@ -296,9 +332,10 @@ function render() {
   $('#locked').hidden = !d.locked;
   $('#overall').hidden = !!d.locked;
   $('#monitorSection').hidden = !!d.locked;
-  if (d.locked) { $('#self').hidden = true; document.title = d.title; return; }
+  if (d.locked) { $('#self').hidden = true; $('#peers').hidden = true; document.title = d.title; return; }
   renderOverall(d);
   renderSelf(d);
+  renderPeers(d);
   renderMonitors(d);
   $('#empty [data-action="add"]').hidden = !d.authed;
 }

@@ -6,6 +6,7 @@
 - [Status meanings](#status-meanings)
 - [Notifications](#notifications)
 - [Self-monitoring](#self-monitoring)
+- [Peer servers (multi-server / federation)](#peer-servers-multi-server--federation)
 - [Dashboard settings](#dashboard-settings)
 - [Data files and retention](#data-files-and-retention)
 
@@ -28,6 +29,8 @@ Set them in your shell, in Docker/Compose, in `/etc/uptime-monitor.env` (systemd
 | `NOTIFY_WEBHOOK_URL` | | One or more webhook URLs, comma-separated. Always used, in addition to the webhooks entered in Settings. |
 | `TRUST_PROXY` | `false` | Trust `X-Forwarded-For` / `X-Forwarded-Proto` / `X-Forwarded-Host` headers. Enable only behind a reverse proxy. |
 | `ALLOW_EMBED` | `false` | Allow embedding the dashboard in an iframe (removes `X-Frame-Options: DENY`). |
+| `PEERS` | | Comma-separated base URLs of other Uptime Monitor instances to federate with. See [Peer servers](#peer-servers-multi-server--federation). |
+| `PEER_TOKEN` | | Shared secret sent as `Authorization: Bearer <PEER_TOKEN>` between peers. Recommended whenever `PEERS` is set; use the same value on every server in the group. |
 
 **Changing the admin password:** set `ADMIN_PASSWORD` and restart, or edit `admin-password.txt` and restart. Existing sessions stay signed in; delete `sessions.json` and restart to sign everyone out.
 
@@ -127,6 +130,24 @@ The **This server** card tracks the monitor's own availability:
 - Shown: current process uptime (live counter), start time, uptime % for 24 h/7 d/30 d/90 d, 90-day bars, restart and outage counts, and an event log. When logged in you also see host name, OS, Node version, host uptime, load and memory.
 
 Because it can't alert while it is itself down, see [Monitoring the monitor](DEPLOYMENT.md#monitoring-the-monitor) for instant alerts.
+
+## Peer servers (multi-server / federation)
+
+Run Uptime Monitor on more than one machine and have every instance show all of them on one dashboard, each with its own uptime record. There's no central server and no single point of failure: every instance independently polls the others, so any one instance's dashboard shows the whole group even if some of the others are down.
+
+**Setup**, on each server:
+
+```ini
+PEERS=https://status-eu.example.com,https://status-us.example.com   # the *other* servers, not itself
+PEER_TOKEN=some-long-shared-secret                                   # same value on every server
+```
+
+- `PEERS` is the list of the *other* servers in the group (each one lists everyone else). Don't include a server's own address.
+- `PEER_TOKEN` is a shared secret, the same on every server, sent as `Authorization: Bearer <PEER_TOKEN>`. Without it, `/api/peer-status` (what peers poll) is public and unauthenticated — it never exposes monitors or targets, only this server's own uptime numbers, but setting a token is still recommended.
+
+Each instance polls every URL in `PEERS` every 20 seconds and shows the result in an **Other servers** panel: online/unreachable, uptime % (24h/7d/30d/90d) and 90-day bars, using the peer's own self-reported uptime record when it's reachable, and the last one it reported plus "last seen" when it isn't.
+
+This only shares each server's own self-uptime — it does not sync monitor lists between servers; each instance still has its own monitors, settings and admin login.
 
 ## Dashboard settings
 
