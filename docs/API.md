@@ -35,6 +35,7 @@ Read endpoints (`/api/status`, `GET /api/monitors/:id`) are public when *Public 
 | GET | `/api/settings` | admin | Current settings. |
 | PUT | `/api/settings` | admin | Update `title`, `webhooks` (array or newline-separated string), `publicDashboard`, `publicShowTargets`. |
 | POST | `/api/settings/test-notification` | admin | Send a test message to all webhooks. |
+| POST | `/api/reset` | admin | Wipe check history, uptime stats and the server outage record (monitors and settings are kept). |
 | GET | `/api/export` | admin | Download monitors and settings as JSON. |
 | POST | `/api/import` | admin | `{"monitors": [...]}` — adds monitors (same fields as create). |
 

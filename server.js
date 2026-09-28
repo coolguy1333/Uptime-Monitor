@@ -474,6 +474,16 @@ async function handleApi(req, res, url) {
     return send(res, 200, { results: await notifier.test() });
   }
 
+  // Wipes check history, uptime stats and this server's outage record. Monitors, settings and logins are kept.
+  if (p === '/api/reset' && method === 'POST') {
+    if (needAuth() || needJson()) return;
+    store.history = {};
+    store.saveHistory(true);
+    selfTracker.reset();
+    scheduler.resetAll();
+    return send(res, 200, { ok: true });
+  }
+
   if (p === '/api/export' && method === 'GET') {
     if (needAuth()) return;
     return send(res, 200, { version: VERSION, exportedAt: new Date().toISOString(), settings: store.settings, monitors: store.monitors },
