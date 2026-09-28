@@ -20,7 +20,9 @@ See the troubleshooting table in [GOOGLE_SIGNIN.md](GOOGLE_SIGNIN.md#troubleshoo
 - Alpine: `apk add iputils`
 - The Docker image already includes it.
 
-**"ping not permitted"** — the user running the app isn't allowed to send ICMP:
+**"Reachable via TCP 443 (ICMP ping not permitted here)"** — not an error. When ICMP is blocked (e.g. WebManager, which gives apps no extra capabilities), ping monitors automatically fall back to TCP connects on ports 443, 80 and 53. The host counts as up if any connects or actively refuses; it's down only if all three time out or fail to resolve. It's a reachability check rather than a true ping, and response times are TCP connect times.
+
+If you want real ICMP, the user running the app must be allowed to send it:
 - **Docker/Podman:** add `cap_add: [NET_RAW]` under the service in `docker-compose.yml` (or `--cap-add NET_RAW`).
 - **systemd:** the provided unit already grants `CAP_NET_RAW`. If you wrote your own unit, add `AmbientCapabilities=CAP_NET_RAW`.
 - **Linux in general:** allow unprivileged ICMP for all groups:

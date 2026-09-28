@@ -49,7 +49,7 @@ Requests the URL and checks the response.
 
 Sends one ICMP echo request using the system `ping` command and reports round-trip time. Works with IPv4, IPv6 and hostnames. Useful for routers, switches, servers, Proxmox hosts, VMs, printers, etc.
 
-Requires the `ping` command on the machine running the monitor (included in the Docker image and installed by `deploy/install.sh`).
+Requires the `ping` command on the machine running the monitor (included in the Docker image and installed by `deploy/install.sh`). If the environment forbids ICMP (for example WebManager apps), the check falls back to TCP connects on ports 443/80/53; see [Troubleshooting](TROUBLESHOOTING.md#ping-checks-fail).
 
 ### TCP port
 
