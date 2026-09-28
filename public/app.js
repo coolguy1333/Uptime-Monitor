@@ -574,6 +574,17 @@ $('#testNotifyBtn').addEventListener('click', async () => {
   } catch (err) { $('.form-error', form).textContent = err.message; }
 });
 
+$('#resetDataBtn').addEventListener('click', async () => {
+  if (!confirm('Reset all data?\n\nThis permanently deletes every monitor\'s check history, uptime statistics and this server\'s outage record. Your monitors, settings and logins are kept.')) return;
+  try {
+    await api('api/reset', { method: 'POST', body: {} });
+    state.details.clear();
+    $('#settingsDialog').close();
+    toast('Data reset');
+    refresh();
+  } catch (err) { $('.form-error', $('#settingsForm')).textContent = err.message; }
+});
+
 $('#importFile').addEventListener('change', async e => {
   const file = e.target.files[0];
   e.target.value = '';
