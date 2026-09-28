@@ -28,6 +28,7 @@ Read endpoints (`/api/status`, `GET /api/monitors/:id`) are public when *Public 
 | PUT | `/api/monitors/:id` | admin | Update a monitor (send only the fields to change). |
 | DELETE | `/api/monitors/:id` | admin | Delete a monitor and its history. |
 | POST | `/api/monitors/:id/check` | admin | Run a check now; returns the updated monitor. |
+| POST | `/api/monitors/:id/reset` | admin | Delete this monitor's check history, uptime stats and events (the monitor is kept). |
 | POST | `/api/login` | — | `{"password": "..."}` → sets session cookie. Only when password login is enabled. Rate-limited to 10 tries/minute per IP. |
 | GET | `/api/auth/google` | — | Starts Google sign-in (browser redirect). |
 | GET | `/api/auth/google/callback` | — | Google redirects back here. Register this URL in Google Cloud. |
@@ -35,7 +36,6 @@ Read endpoints (`/api/status`, `GET /api/monitors/:id`) are public when *Public 
 | GET | `/api/settings` | admin | Current settings. |
 | PUT | `/api/settings` | admin | Update `title`, `webhooks` (array or newline-separated string), `publicDashboard`, `publicShowTargets`. |
 | POST | `/api/settings/test-notification` | admin | Send a test message to all webhooks. |
-| POST | `/api/reset` | admin | Wipe check history, uptime stats and the server outage record (monitors and settings are kept). |
 | GET | `/api/export` | admin | Download monitors and settings as JSON. |
 | POST | `/api/import` | admin | `{"monitors": [...]}` — adds monitors (same fields as create). |
 
@@ -138,4 +138,4 @@ curl -s $URL/api/status | jq -r '.monitors[] | "\(.status)\t\(.name)"'
 }
 ```
 
-Times are Unix milliseconds. Uptime values are percentages, or `null` when there is no data for that window. `peers` is only present when `PEERS` is configured (see [Peer servers](CONFIGURATION.md#peer-servers-multi-server--federation)); `self` inside a peer entry is that peer's own last-reported self-uptime (kept even if `reachable` is currently `false`), and `observedUptime` is that peer's uptime as seen from this server's own polling.
+Times are Unix milliseconds. Uptime values are percentages, or `null` when there is no data for that window. `peers` is only present when `PEERS` is configured (see [Peer servers](CONFIGURATION.md#peer-servers-multi-server--federation)); `self` inside a peer entry is that peer's own last-reported self-uptime (kept even if `reachable` is currently `false`; only `uptime`, `daily`, `processUptime`, `restarts` and `downtimeCount30d` are kept, as plain numbers), and `observedUptime` is that peer's uptime as seen from this server's own polling. Like monitor targets, `url` is only included for admins or when *Show URLs / IP addresses to public visitors* is on; otherwise unnamed peers appear as "Server 1", "Server 2", ….
