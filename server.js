@@ -353,6 +353,15 @@ function baseUrl(req) {
   return `${isSecure(req) ? 'https' : 'http'}://${String(host).split(',')[0].trim()}`;
 }
 
+// CDNs/proxies in front of the app (e.g. WebManager's Cloudflare) can cache app.js and style.css for
+// hours regardless of our Cache-Control, so updates would not show. Referencing them as
+// app.js?v=<content hash> from index.html makes every release a new URL.
+const ASSET_VERSION = (() => {
+  const h = crypto.createHash('sha1');
+  for (const f of ['app.js', 'style.css']) { try { h.update(fs.readFileSync(path.join(PUBLIC_DIR, f))); } catch { /* missing file: served as 404 later */ } }
+  return h.digest('hex').slice(0, 10);
+})();
+
 function serveStatic(req, res, pathname) {
   let rel;
   try { rel = decodeURIComponent(pathname); } catch { return send(res, 400, 'Bad request'); }
@@ -362,6 +371,9 @@ function serveStatic(req, res, pathname) {
   fs.readFile(file, (err, data) => {
     if (err) return send(res, 404, 'Not found');
     const ext = path.extname(file);
+    if (file === path.join(PUBLIC_DIR, 'index.html')) {
+      data = Buffer.from(data.toString('utf8').replace(/((?:src|href)="(?:app\.js|style\.css))"/g, `$1?v=${ASSET_VERSION}"`));
+    }
     res.writeHead(200, {
       ...SECURITY_HEADERS,
       'Content-Type': MIME[ext] || 'application/octet-stream',
