@@ -27,7 +27,7 @@
     },
     {
       "name": "GOOGLE_CLIENT_ID",
-      "description": "Google OAuth client ID. With the secret below, enables Sign in with Google."
+      "description": "Google OAuth client ID. With the secret below, enables Sign in with Google. In Google Cloud, add this app's address plus /api/auth/google/callback as an Authorized redirect URI (e.g. https://status.example.com/api/auth/google/callback)."
     },
     {
       "name": "GOOGLE_CLIENT_SECRET",

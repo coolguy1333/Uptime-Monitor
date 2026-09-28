@@ -27,7 +27,7 @@ Set them in your shell, in Docker/Compose, in `/etc/uptime-monitor.env` (systemd
 | `SITE_TITLE` | `Uptime Monitor` | Site title used on first start. After that, change it in Settings. |
 | `PUBLIC_DASHBOARD` | `true` | Initial "public dashboard" setting used on first start (`false` = login required to see anything). After that, change it in Settings. |
 | `NOTIFY_WEBHOOK_URL` | | One or more webhook URLs, comma-separated. Always used, in addition to the webhooks entered in Settings. |
-| `TRUST_PROXY` | `false` | Trust `X-Forwarded-For` / `X-Forwarded-Proto` / `X-Forwarded-Host` headers. Enable only behind a reverse proxy. |
+| `TRUST_PROXY` | `false` | Trust `X-Forwarded-For` / `X-Forwarded-Proto` / `X-Forwarded-Host` headers. Enable only behind a reverse proxy. The client IP (used for login rate limits) is the last `X-Forwarded-For` entry, i.e. the one your proxy added. |
 | `ALLOW_EMBED` | `false` | Allow embedding the dashboard in an iframe (removes `X-Frame-Options: DENY`). |
 | `PEERS` | | Comma-separated base URLs of other Uptime Monitor instances to federate with. See [Peer servers](#peer-servers-multi-server--federation). |
 | `PEER_TOKEN` | | Shared secret sent as `Authorization: Bearer <PEER_TOKEN>` between peers. Recommended whenever `PEERS` is set; use the same value on every server in the group. |

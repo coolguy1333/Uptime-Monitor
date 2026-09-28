@@ -37,7 +37,14 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 // Other Uptime Monitor instances to federate with (see docs/CONFIGURATION.md#peer-servers).
 // A URL matching our own PUBLIC_URL is dropped so a copy-pasted PEERS list can't make an
 // instance poll itself.
-const PEER_URLS = (process.env.PEERS || '').split(',').map(s => s.trim().replace(/\/+$/, '')).filter(Boolean).filter(u => u !== PUBLIC_URL);
+const PEER_URLS = (process.env.PEERS || '').split(',').map(s => s.trim().replace(/\/+$/, '')).filter(Boolean).filter(u => {
+  if (u === PUBLIC_URL) return false;
+  if (!/^https?:\/\/[^\s/]+(\/\S*)?$/i.test(u)) { console.warn(`[peers] Ignoring invalid PEERS entry "${u}" (expected e.g. https://status.example.com)`); return false; }
+  return true;
+});
+if (PUBLIC_URL && !/^https?:\/\/[^\s/]+$/i.test(PUBLIC_URL)) {
+  console.warn(`[config] PUBLIC_URL "${PUBLIC_URL}" should look like https://status.example.com (scheme and host, no path).`);
+}
 const PEER_TOKEN = (process.env.PEER_TOKEN || '').trim();
 
 const settingsDefaults = {};
@@ -53,6 +60,12 @@ auth.revokeDisallowed();
 const peerHub = new PeerHub(store, { urls: PEER_URLS, token: PEER_TOKEN });
 if (PEER_URLS.length && !PEER_TOKEN) {
   console.warn('[peers] PEERS is set without PEER_TOKEN - /api/peer-status is public and unauthenticated. Set PEER_TOKEN to restrict it to your own servers.');
+}
+// Drop history left behind by deleted monitors or peers removed from PEERS.
+{
+  const keep = new Set([...store.monitors.map(m => m.id), ...PEER_URLS.map(u => peerHub.peerId(u))]);
+  const stale = Object.keys(store.history).filter(k => !keep.has(k));
+  if (stale.length) { stale.forEach(k => delete store.history[k]); store.historyDirty = true; }
 }
 
 if (store.firstRun) {
@@ -250,10 +263,11 @@ function selfSummary(authed) {
 // first successful poll, kept around afterwards even if the peer later goes unreachable), plus
 // the uptime of that peer as observed from here (`observedUptime` - what fraction of our polls
 // reached it), which keeps working even if the peer's own self-tracking data can't be reached.
-function peerSummaries() {
-  return peerHub.entries().map(p => ({
-    url: p.url,
-    name: p.name,
+// Peer addresses follow the same rule as monitor targets: hidden from public visitors unless allowed.
+function peerSummaries(authed) {
+  return peerHub.entries().map((p, i) => ({
+    ...(showTargets(authed) ? { url: p.url } : {}),
+    name: p.named ? p.name : (showTargets(authed) ? p.name : `Server ${i + 1}`),
     reachable: p.reachable,
     error: p.error,
     checkedAt: p.checkedAt,
@@ -315,8 +329,14 @@ function readBody(req) {
   });
 }
 
+// Behind a proxy, use the LAST X-Forwarded-For entry: that's the one our own proxy appended.
+// The first entry is whatever the client sent, so trusting it would let anyone dodge the rate limits.
 function clientIp(req) {
-  if (TRUST_PROXY && req.headers['x-forwarded-for']) return req.headers['x-forwarded-for'].split(',')[0].trim();
+  const xff = TRUST_PROXY && req.headers['x-forwarded-for'];
+  if (xff) {
+    const last = String(xff).split(',').pop().trim();
+    if (last) return last;
+  }
   return req.socket.remoteAddress;
 }
 
@@ -393,7 +413,7 @@ async function handleApi(req, res, url) {
     const monitors = store.monitors.map(m => monitorSummary(m, authed));
     const counts = { up: 0, down: 0, pending: 0, paused: 0 };
     for (const m of monitors) counts[m.status] = (counts[m.status] || 0) + 1;
-    return send(res, 200, { ...base, self: selfSummary(authed), counts, monitors, peers: peerSummaries() });
+    return send(res, 200, { ...base, self: selfSummary(authed), counts, monitors, peers: peerSummaries(authed) });
   }
 
   // ---- password login
@@ -431,6 +451,7 @@ async function handleApi(req, res, url) {
   }
 
   if (p === '/api/logout' && method === 'POST') {
+    if (needJson()) return;
     const token = auth.tokenFrom(req);
     if (token) auth.destroySession(token);
     return send(res, 200, { ok: true }, { 'Set-Cookie': auth.cookie(null, isSecure(req)) });
