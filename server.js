@@ -474,16 +474,6 @@ async function handleApi(req, res, url) {
     return send(res, 200, { results: await notifier.test() });
   }
 
-  // Wipes check history, uptime stats and this server's outage record. Monitors, settings and logins are kept.
-  if (p === '/api/reset' && method === 'POST') {
-    if (needAuth() || needJson()) return;
-    store.history = {};
-    store.saveHistory(true);
-    selfTracker.reset();
-    scheduler.resetAll();
-    return send(res, 200, { ok: true });
-  }
-
   if (p === '/api/export' && method === 'GET') {
     if (needAuth()) return;
     return send(res, 200, { version: VERSION, exportedAt: new Date().toISOString(), settings: store.settings, monitors: store.monitors },
@@ -527,7 +517,7 @@ async function handleApi(req, res, url) {
     return send(res, 405, { error: 'Method not allowed' });
   }
 
-  const match = p.match(/^\/api\/monitors\/([a-f0-9]+)(\/check)?$/);
+  const match = p.match(/^\/api\/monitors\/([a-f0-9]+)(\/check|\/reset)?$/);
   if (match) {
     const id = match[1];
     const idx = store.monitors.findIndex(m => m.id === id);
@@ -537,6 +527,13 @@ async function handleApi(req, res, url) {
     if (match[2]) {
       if (method !== 'POST') return send(res, 405, { error: 'Method not allowed' });
       if (needAuth() || needJson()) return;
+      if (match[2] === '/reset') {
+        // Wipe this monitor's history and stats and start over; the monitor itself is kept.
+        store.deleteHistory(id);
+        scheduler.reset(id);
+        scheduler.schedule(m, 200);
+        return send(res, 200, monitorSummary(m, true));
+      }
       await scheduler.run(id);
       return send(res, 200, monitorSummary(store.monitors.find(x => x.id === id) || m, true));
     }

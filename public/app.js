@@ -281,6 +281,7 @@ function detailHtml(m) {
       <button class="btn small" data-action="edit">Edit</button>
       <button class="btn small" data-action="pause">${m.paused ? 'Resume' : 'Pause'}</button>
       <span class="spacer"></span>
+      <button class="btn small danger" data-action="reset">Reset data</button>
       <button class="btn small danger" data-action="delete">Delete</button>
     </div>` : '';
   const events = d && d.events.length
@@ -574,17 +575,6 @@ $('#testNotifyBtn').addEventListener('click', async () => {
   } catch (err) { $('.form-error', form).textContent = err.message; }
 });
 
-$('#resetDataBtn').addEventListener('click', async () => {
-  if (!confirm('Reset all data?\n\nThis permanently deletes every monitor\'s check history, uptime statistics and this server\'s outage record. Your monitors, settings and logins are kept.')) return;
-  try {
-    await api('api/reset', { method: 'POST', body: {} });
-    state.details.clear();
-    $('#settingsDialog').close();
-    toast('Data reset');
-    refresh();
-  } catch (err) { $('.form-error', $('#settingsForm')).textContent = err.message; }
-});
-
 $('#importFile').addEventListener('change', async e => {
   const file = e.target.files[0];
   e.target.value = '';
@@ -630,6 +620,11 @@ document.addEventListener('click', async e => {
     } else if (action === 'pause') {
       await api(`api/monitors/${id}`, { method: 'PUT', body: { paused: !m.paused } });
       toast(m.paused ? 'Monitor resumed' : 'Monitor paused');
+    } else if (action === 'reset') {
+      if (!confirm(`Reset data for "${m.name}"?\n\nThis permanently deletes its check history, uptime statistics and events. The monitor itself is kept.`)) return;
+      await api(`api/monitors/${id}/reset`, { method: 'POST', body: {} });
+      state.details.delete(id);
+      toast('Monitor data reset');
     } else if (action === 'delete') {
       if (!confirm(`Delete "${m.name}" and all of its history?`)) return;
       await api(`api/monitors/${id}`, { method: 'DELETE' });
