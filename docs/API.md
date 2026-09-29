@@ -20,7 +20,7 @@ Read endpoints (`/api/status`, `GET /api/monitors/:id`) are public when *Public 
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | GET | `/api/health` | — | Liveness check. Always public. |
-| GET | `/api/peer-status` | peer token | What a federated peer polls (see [Peer servers](CONFIGURATION.md#peer-servers-multi-server--federation)): this server's own name, version and self-uptime. Public if `PEER_TOKEN` is unset, otherwise needs `Authorization: Bearer <PEER_TOKEN>`. |
+| GET | `/api/peer-status` | peer token | What a federated peer polls (see [Peer servers](CONFIGURATION.md#peer-servers-multi-server--federation)): this server's own name, version and self-uptime. Public if `PEER_TOKEN` is unset, otherwise needs `Authorization: Bearer <PEER_TOKEN>` and also returns `monitors` and `deleted` (used for monitor sync). |
 | GET | `/api/status` | view | Everything the dashboard shows: self uptime, counts, all monitors, peers. |
 | GET | `/api/monitors` | view | All monitors (same objects as in `/api/status`). |
 | GET | `/api/monitors/:id` | view | One monitor with 24 h response-time series, 90 daily buckets and recent events. |
@@ -28,7 +28,6 @@ Read endpoints (`/api/status`, `GET /api/monitors/:id`) are public when *Public 
 | PUT | `/api/monitors/:id` | admin | Update a monitor (send only the fields to change). |
 | DELETE | `/api/monitors/:id` | admin | Delete a monitor and its history. |
 | POST | `/api/monitors/:id/check` | admin | Run a check now; returns the updated monitor. |
-| POST | `/api/monitors/:id/reset` | admin | Delete this monitor's check history, uptime stats and events (the monitor is kept). |
 | POST | `/api/login` | — | `{"password": "..."}` → sets session cookie. Only when password login is enabled. Rate-limited to 10 tries/minute per IP. |
 | GET | `/api/auth/google` | — | Starts Google sign-in (browser redirect). |
 | GET | `/api/auth/google/callback` | — | Google redirects back here. Register this URL in Google Cloud. |

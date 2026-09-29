@@ -22,6 +22,7 @@ const { SelfTracker } = require('./lib/self');
 const { Auth, AuthError } = require('./lib/auth');
 const { HOST_RE } = require('./lib/checks');
 const { PeerHub } = require('./lib/peers');
+const { mergeMonitors } = require('./lib/sync');
 
 const truthy = v => /^(1|true|yes|on)$/i.test(String(v || '').trim());
 
@@ -57,9 +58,14 @@ const scheduler = new Scheduler(store, notifier);
 const selfTracker = new SelfTracker(store, notifier);
 const auth = new Auth(DATA_DIR);
 auth.revokeDisallowed();
-const peerHub = new PeerHub(store, { urls: PEER_URLS, token: PEER_TOKEN });
+const peerHub = new PeerHub(store, {
+  urls: PEER_URLS,
+  token: PEER_TOKEN,
+  onSync: (monitors, deleted) => mergeMonitors({ store, scheduler, validate: r => validateMonitor(r, newMonitor({})) }, monitors, deleted),
+});
+const SYNC_MONITORS = PEER_URLS.length > 0 && Boolean(PEER_TOKEN);
 if (PEER_URLS.length && !PEER_TOKEN) {
-  console.warn('[peers] PEERS is set without PEER_TOKEN - /api/peer-status is public and unauthenticated. Set PEER_TOKEN to restrict it to your own servers.');
+  console.warn('[peers] PEERS is set without PEER_TOKEN - /api/peer-status is public and unauthenticated, and monitors are NOT synced between servers. Set the same PEER_TOKEN on every server to protect it and turn on monitor sync.');
 }
 // Drop history left behind by deleted monitors or peers removed from PEERS.
 {
@@ -69,7 +75,8 @@ if (PEER_URLS.length && !PEER_TOKEN) {
 }
 
 if (store.firstRun) {
-  store.monitors = [
+  // With monitor sync on, a new server gets its monitors from its peers instead of example ones.
+  store.monitors = SYNC_MONITORS ? [] : [
     newMonitor({ name: 'Example website', type: 'http', target: 'https://example.com' }),
     newMonitor({ name: 'Cloudflare DNS (ping)', type: 'ping', target: '1.1.1.1' }),
     newMonitor({ name: 'Google DNS (TCP 53)', type: 'tcp', target: '8.8.8.8', port: 53 }),
@@ -102,6 +109,7 @@ function newMonitor(fields) {
     method: 'GET', acceptedStatus: '200-399', keyword: '', invertKeyword: false,
     ignoreTls: false, followRedirects: true, paused: false,
     createdAt: Date.now(),
+    updatedAt: Date.now(),
     ...fields,
   };
 }
@@ -353,6 +361,15 @@ function baseUrl(req) {
   return `${isSecure(req) ? 'https' : 'http'}://${String(host).split(',')[0].trim()}`;
 }
 
+// CDNs/proxies in front of the app (e.g. WebManager's Cloudflare) can cache app.js and style.css for
+// hours regardless of our Cache-Control, so updates would not show. Referencing them as
+// app.js?v=<content hash> from index.html makes every release a new URL.
+const ASSET_VERSION = (() => {
+  const h = crypto.createHash('sha1');
+  for (const f of ['app.js', 'style.css']) { try { h.update(fs.readFileSync(path.join(PUBLIC_DIR, f))); } catch { /* missing file: served as 404 later */ } }
+  return h.digest('hex').slice(0, 10);
+})();
+
 function serveStatic(req, res, pathname) {
   let rel;
   try { rel = decodeURIComponent(pathname); } catch { return send(res, 400, 'Bad request'); }
@@ -362,6 +379,9 @@ function serveStatic(req, res, pathname) {
   fs.readFile(file, (err, data) => {
     if (err) return send(res, 404, 'Not found');
     const ext = path.extname(file);
+    if (file === path.join(PUBLIC_DIR, 'index.html')) {
+      data = Buffer.from(data.toString('utf8').replace(/((?:src|href)="(?:app\.js|style\.css))"/g, `$1?v=${ASSET_VERSION}"`));
+    }
     res.writeHead(200, {
       ...SECURITY_HEADERS,
       'Content-Type': MIME[ext] || 'application/octet-stream',
@@ -396,7 +416,10 @@ async function handleApi(req, res, url) {
   // never includes monitors, targets or host details - only this server's own uptime record.
   if (p === '/api/peer-status' && (method === 'GET' || method === 'HEAD')) {
     if (!peerHub.authorizeIncoming(req, clientIp(req))) return send(res, 401, { error: 'Invalid or missing peer token' });
-    return send(res, 200, { name: store.settings.title, version: VERSION, time: Date.now(), self: selfSummary(false) });
+    const payload = { name: store.settings.title, version: VERSION, time: Date.now(), self: selfSummary(false) };
+    // Monitor definitions (with their targets) only go to peers that proved they hold the shared token.
+    if (PEER_TOKEN) { payload.monitors = store.monitors; payload.deleted = store.tombstones; }
+    return send(res, 200, payload);
   }
 
   if (p === '/api/status' && method === 'GET') {
@@ -538,7 +561,7 @@ async function handleApi(req, res, url) {
     return send(res, 405, { error: 'Method not allowed' });
   }
 
-  const match = p.match(/^\/api\/monitors\/([a-f0-9]+)(\/check|\/reset)?$/);
+  const match = p.match(/^\/api\/monitors\/([a-f0-9]+)(\/check)?$/);
   if (match) {
     const id = match[1];
     const idx = store.monitors.findIndex(m => m.id === id);
@@ -548,13 +571,6 @@ async function handleApi(req, res, url) {
     if (match[2]) {
       if (method !== 'POST') return send(res, 405, { error: 'Method not allowed' });
       if (needAuth() || needJson()) return;
-      if (match[2] === '/reset') {
-        // Wipe this monitor's history and stats and start over; the monitor itself is kept.
-        store.deleteHistory(id);
-        scheduler.reset(id);
-        scheduler.schedule(m, 200);
-        return send(res, 200, monitorSummary(m, true));
-      }
       await scheduler.run(id);
       return send(res, 200, monitorSummary(store.monitors.find(x => x.id === id) || m, true));
     }
@@ -574,6 +590,7 @@ async function handleApi(req, res, url) {
       const body = await readBody(req);
       const { monitor, errors } = validateMonitor(body, m);
       if (errors.length) return send(res, 400, { error: errors.join('. ') });
+      monitor.updatedAt = Date.now();
       const targetChanged = monitor.type !== m.type || monitor.target !== m.target || monitor.port !== m.port;
       const pausedNow = monitor.paused && !m.paused;
       store.monitors[idx] = monitor;
@@ -588,6 +605,8 @@ async function handleApi(req, res, url) {
       scheduler.remove(id);
       store.deleteHistory(id);
       store.saveMonitors();
+      store.tombstones[id] = Date.now();
+      store.saveTombstones();
       return send(res, 200, { ok: true });
     }
     return send(res, 405, { error: 'Method not allowed' });
@@ -630,7 +649,7 @@ server.listen(PORT, HOST, () => {
   if (PUBLIC_URL) console.log(`Public URL: ${PUBLIC_URL}`);
   console.log(`Data directory: ${DATA_DIR}`);
   console.log(`Monitoring ${store.monitors.length} target(s).`);
-  if (PEER_URLS.length) console.log(`Federated with ${PEER_URLS.length} peer server(s): ${PEER_URLS.join(', ')}`);
+  if (PEER_URLS.length) console.log(`Federated with ${PEER_URLS.length} peer server(s): ${PEER_URLS.join(', ')} (monitor sync ${SYNC_MONITORS ? 'on' : 'off - set PEER_TOKEN'})`);
   const m = auth.methods();
   if (m.google) {
     console.log(`Google sign-in: enabled for ${auth.google.admins.join(', ') || '(nobody - set ADMIN_EMAILS)'}`);
