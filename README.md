@@ -87,6 +87,7 @@ All settings are optional environment variables. You can also put them in a `.en
 | `PASSWORD_LOGIN` | `true` without Google, `false` with Google | Allow signing in with the admin password. |
 | `DATA_DIR` | `./data` | Where monitors, settings and history are stored. |
 | `SITE_TITLE` | `Uptime Monitor` | Title used on first start (change it later in Settings). |
+| `SERVER_NAME` | site title | Name other servers show for this one when you run several. Change it later in Settings. |
 | `PUBLIC_DASHBOARD` | `true` | First-start default; `false` = login required to view anything (change later in Settings). |
 | `NOTIFY_WEBHOOK_URL` | | Comma-separated webhook URLs, used in addition to those set in the UI. |
 | `TRUST_PROXY` | `false` | Set `true` behind Caddy/nginx/Traefik/Cloudflare Tunnel so client IPs and HTTPS are detected correctly. |
@@ -115,6 +116,8 @@ lib/store.js         JSON storage, uptime maths, history retention
 lib/notify.js        webhook notifications
 lib/auth.js          Google sign-in, admin password, sessions
 lib/peers.js         multi-server federation (polls/serves /api/peer-status)
+lib/sync.js          two-way monitor sync between federated servers
+lib/ratelimit.js     per-address rate limiter for logins and tokens
 public/              dashboard (plain HTML/CSS/JS)
 deploy/              systemd unit, installer, Caddy and nginx examples
 Dockerfile, docker-compose.yml

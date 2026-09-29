@@ -143,6 +143,8 @@ details[open] summary { margin-bottom: 8px; }
 .peer-id { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .peer-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .peer-status { font-size: 12.5px; }
+.peer-host { color: var(--muted); font-weight: 400; font-size: 12.5px; margin-left: 6px; }
+.note { color: var(--muted); font-size: 13px; }
 .peer .stats { grid-template-columns: repeat(4, minmax(60px, 1fr)); flex: none; }
 
 /* ---------- monitor list ---------- */

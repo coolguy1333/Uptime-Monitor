@@ -15,20 +15,31 @@ See the troubleshooting table in [GOOGLE_SIGNIN.md](GOOGLE_SIGNIN.md#troubleshoo
 
 ## Ping checks fail
 
-**"ping command not installed on this server"** — install it:
-- Debian/Ubuntu: `apt install iputils-ping`
-- Alpine: `apk add iputils`
-- The Docker image already includes it.
+**"Reachable via TCP 443 (ICMP ping isn't available here)"** — not an error. When ICMP can't be used, ping monitors automatically fall back to TCP connects on ports 443, 80 and 53. The host counts as up if any connects or actively refuses; it's down only if all three time out or fail to resolve. It's a reachability check rather than a true ping, and response times are TCP connect times. This happens when:
+- the app isn't allowed to send ICMP (WebManager, and Docker without `NET_RAW`), or
+- the `ping` program isn't installed (Debian/Ubuntu: `apt install iputils-ping`, Alpine: `apk add iputils`; the Docker image already includes it).
 
-**"Reachable via TCP 443 (ICMP ping not permitted here)"** — not an error. When ICMP is blocked (e.g. WebManager, which gives apps no extra capabilities), ping monitors automatically fall back to TCP connects on ports 443, 80 and 53. The host counts as up if any connects or actively refuses; it's down only if all three time out or fail to resolve. It's a reachability check rather than a true ping, and response times are TCP connect times.
-
-If you want real ICMP, the user running the app must be allowed to send it:
+If you want real ICMP pings, the user running the app must be allowed to send them:
 - **Docker/Podman:** add `cap_add: [NET_RAW]` under the service in `docker-compose.yml` (or `--cap-add NET_RAW`).
 - **systemd:** the provided unit already grants `CAP_NET_RAW`. If you wrote your own unit, add `AmbientCapabilities=CAP_NET_RAW`.
 - **Linux in general:** allow unprivileged ICMP for all groups:
   `echo 'net.ipv4.ping_group_range = 0 2147483647' | sudo tee /etc/sysctl.d/99-ping.conf && sudo sysctl --system`
 
 **Host is up but ping says "No reply"** — many devices and cloud servers block ICMP (Windows PCs do by default). Use a TCP monitor on an open port instead (e.g. 22, 80, 443, 3389).
+
+## An "Other servers" card says Unreachable
+
+The card says why. Fix it on the server that shows the message:
+
+| Message | What to do |
+|---|---|
+| Peer token rejected | `PEER_TOKEN` differs between the two servers. Set the exact same value on both (no spaces or quotes). |
+| Not an Uptime Monitor server (HTTP 404 / unexpected response) | The address in `PEERS` isn't an Uptime Monitor. Check the address, and that the other server runs a version with peer support. |
+| Redirected to https://… | Use the address it names (usually `https://` instead of `http://`) in `PEERS`. |
+| Connection refused / timed out / DNS lookup failed | The other server is down, the port is wrong, or this server can't reach it. Try `curl <address>/api/health` from this machine. |
+| Server not responding (HTTP 502/503/504) | The other server is restarting or its proxy can't reach it. It usually recovers by itself. |
+
+`PEERS` lists the *other* servers (not this one), and each server must be able to reach the others' addresses. To sync monitors too, the same `PEER_TOKEN` is needed on every server.
 
 ## HTTPS site shows "Self-signed TLS certificate" or "Unable to verify TLS certificate"
 
