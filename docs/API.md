@@ -20,7 +20,7 @@ Read endpoints (`/api/status`, `GET /api/monitors/:id`) are public when *Public 
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | GET | `/api/health` | — | Liveness check. Always public. |
-| GET | `/api/peer-status` | peer token | What a federated peer polls (see [Peer servers](CONFIGURATION.md#peer-servers-multi-server--federation)): this server's own name, version and self-uptime. Public if `PEER_TOKEN` is unset, otherwise needs `Authorization: Bearer <PEER_TOKEN>`. |
+| GET | `/api/peer-status` | peer token | What a federated peer polls (see [Peer servers](CONFIGURATION.md#peer-servers-multi-server--federation)): this server's own name, version and self-uptime. Public if `PEER_TOKEN` is unset, otherwise needs `Authorization: Bearer <PEER_TOKEN>` and also returns `monitors` and `deleted` (used for monitor sync). |
 | GET | `/api/status` | view | Everything the dashboard shows: self uptime, counts, all monitors, peers. |
 | GET | `/api/monitors` | view | All monitors (same objects as in `/api/status`). |
 | GET | `/api/monitors/:id` | view | One monitor with 24 h response-time series, 90 daily buckets and recent events. |

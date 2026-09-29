@@ -17,7 +17,7 @@ A small, self-hosted uptime monitor and status page. It watches **websites**, **
 | **Uptime stats** | 24 h / 7 d / 30 d / 90 d uptime per monitor, 90-day daily bars, last-24 h response-time chart, event history. |
 | **Alerts** | Webhooks for Discord, Slack, ntfy or any JSON endpoint when something goes down, comes back up, a TLS certificate is about to expire, or the monitor restarts after an outage. |
 | **Status page** | Public read-only dashboard (optional); IPs/URLs hidden from the public by default. |
-| **Multi-server** | Deploy it on several servers and point them at each other (`PEERS`); every instance shows all of them on one dashboard, each with its own uptime, and no server is a single point of failure for the others' visibility. |
+| **Multi-server** | Deploy it on several servers and point them at each other (`PEERS`); every instance shows all of them on one dashboard, each with its own uptime, and the monitor list stays in sync across all of them. No server is a single point of failure. |
 | **Sign-in** | **Sign in with Google** (restricted to the accounts in `ADMIN_EMAILS`) and/or an admin password. Sessions survive restarts. |
 | **Extras** | Retries before marking down, per-monitor intervals, dark/light theme, mobile layout, export/import, `/api/health` endpoint, JSON API. |
 

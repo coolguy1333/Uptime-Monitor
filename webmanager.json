@@ -55,7 +55,7 @@
     },
     {
       "name": "PEER_TOKEN",
-      "description": "Shared secret used between federated servers (same value on every server in the group). Recommended whenever PEERS is set.",
+      "description": "Shared secret used between federated servers (same value on every server in the group). Required for monitor sync: with it, monitors added, edited or deleted on any server are synced to the others.",
       "secret": true
     }
   ]

@@ -147,7 +147,18 @@ PEER_TOKEN=some-long-shared-secret                                   # same valu
 
 Each instance polls every URL in `PEERS` every 20 seconds and shows the result in an **Other servers** panel: online/unreachable, uptime % (24h/7d/30d/90d) and 90-day bars, using the peer's own self-reported uptime record when it's reachable, and the last one it reported plus "last seen" when it isn't.
 
-This only shares each server's own self-uptime — it does not sync monitor lists between servers; each instance still has its own monitors, settings and admin login.
+### Monitor sync
+
+With `PEER_TOKEN` set on every server, the **monitor list is synced both ways** as well:
+
+- Add, edit, pause or delete a monitor on any server and the others pick it up within about 20 seconds. The newest edit wins, so keep the servers' clocks accurate (NTP). Deletions are remembered for 90 days so a deleted monitor doesn't come back.
+- Each server runs the checks itself and keeps its own history, so you see each monitor from every server's location. Check results are not shared.
+- A monitor with the same type, target and port on two servers is treated as one monitor, and the two servers settle on the same id (history is kept).
+- A new server with sync on starts empty instead of creating the three example monitors, and receives the group's monitors from its peers.
+- Every server that checks a monitor sends its own alerts, so a monitor going down notifies once per server.
+- Settings, webhooks and admin logins are **not** synced; each server keeps its own.
+
+Without `PEER_TOKEN`, servers only exchange uptime and monitors are never shared (monitor targets are only sent to servers that present the token). The list travels between servers on every poll, so use `https://` peer URLs or a trusted network.
 
 ## Dashboard settings
 
