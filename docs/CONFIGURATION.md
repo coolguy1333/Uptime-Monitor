@@ -157,7 +157,6 @@ In **Settings** (admin only):
 - **Public dashboard** — when off, visitors must log in to see anything. `/api/health` always stays public.
 - **Show URLs / IP addresses to public visitors** — off by default, so a public status page doesn't reveal your internal IPs. Logged-in admins always see them.
 - **Export / Import monitors** — JSON file with your monitor definitions (not history). Import adds to the existing list.
-- **Reset data** (on each monitor's detail panel) — permanently deletes that monitor's check history, uptime statistics and events and starts counting from now. The monitor itself is kept. Asks for confirmation.
 
 ## Data files and retention
 

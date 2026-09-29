@@ -550,7 +550,7 @@ async function handleApi(req, res, url) {
     return send(res, 405, { error: 'Method not allowed' });
   }
 
-  const match = p.match(/^\/api\/monitors\/([a-f0-9]+)(\/check|\/reset)?$/);
+  const match = p.match(/^\/api\/monitors\/([a-f0-9]+)(\/check)?$/);
   if (match) {
     const id = match[1];
     const idx = store.monitors.findIndex(m => m.id === id);
@@ -560,13 +560,6 @@ async function handleApi(req, res, url) {
     if (match[2]) {
       if (method !== 'POST') return send(res, 405, { error: 'Method not allowed' });
       if (needAuth() || needJson()) return;
-      if (match[2] === '/reset') {
-        // Wipe this monitor's history and stats and start over; the monitor itself is kept.
-        store.deleteHistory(id);
-        scheduler.reset(id);
-        scheduler.schedule(m, 200);
-        return send(res, 200, monitorSummary(m, true));
-      }
       await scheduler.run(id);
       return send(res, 200, monitorSummary(store.monitors.find(x => x.id === id) || m, true));
     }

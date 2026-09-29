@@ -28,7 +28,6 @@ Read endpoints (`/api/status`, `GET /api/monitors/:id`) are public when *Public 
 | PUT | `/api/monitors/:id` | admin | Update a monitor (send only the fields to change). |
 | DELETE | `/api/monitors/:id` | admin | Delete a monitor and its history. |
 | POST | `/api/monitors/:id/check` | admin | Run a check now; returns the updated monitor. |
-| POST | `/api/monitors/:id/reset` | admin | Delete this monitor's check history, uptime stats and events (the monitor is kept). |
 | POST | `/api/login` | — | `{"password": "..."}` → sets session cookie. Only when password login is enabled. Rate-limited to 10 tries/minute per IP. |
 | GET | `/api/auth/google` | — | Starts Google sign-in (browser redirect). |
 | GET | `/api/auth/google/callback` | — | Google redirects back here. Register this URL in Google Cloud. |
