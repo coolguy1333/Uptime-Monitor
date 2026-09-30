@@ -15,6 +15,10 @@
       "default": "Uptime Monitor"
     },
     {
+      "name": "SERVER_NAME",
+      "description": "Name other servers show for this one when you run several (for example \"Raspberry Pi\"). Defaults to the site title. Can also be changed later in Settings."
+    },
+    {
       "name": "PUBLIC_DASHBOARD",
       "description": "Show the dashboard without signing in.",
       "default": "true",

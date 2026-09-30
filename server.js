@@ -50,6 +50,7 @@ const PEER_TOKEN = (process.env.PEER_TOKEN || '').trim();
 
 const settingsDefaults = {};
 if (process.env.SITE_TITLE) settingsDefaults.title = process.env.SITE_TITLE;
+if (process.env.SERVER_NAME) settingsDefaults.serverName = process.env.SERVER_NAME.trim().slice(0, 100);
 if (process.env.PUBLIC_DASHBOARD) settingsDefaults.publicDashboard = !/^(0|false|no|off)$/i.test(process.env.PUBLIC_DASHBOARD.trim());
 
 const store = new Store(DATA_DIR, { settings: settingsDefaults });
@@ -61,11 +62,32 @@ auth.revokeDisallowed();
 const peerHub = new PeerHub(store, {
   urls: PEER_URLS,
   token: PEER_TOKEN,
-  onSync: (monitors, deleted) => mergeMonitors({ store, scheduler, validate: r => validateMonitor(r, newMonitor({})) }, monitors, deleted),
+  onSync: (monitors, deleted) => {
+    if (mergeMonitors({ store, scheduler, validate: r => validateMonitor(r, newMonitor({})) }, monitors, deleted)) statusCache.clear();
+  },
 });
+// How this server is labelled to its peers (and on its own dashboard when it has peers).
+const serverName = () => store.settings.serverName || store.settings.title;
 const SYNC_MONITORS = PEER_URLS.length > 0 && Boolean(PEER_TOKEN);
 if (PEER_URLS.length && !PEER_TOKEN) {
   console.warn('[peers] PEERS is set without PEER_TOKEN - /api/peer-status is public and unauthenticated, and monitors are NOT synced between servers. Set the same PEER_TOKEN on every server to protect it and turn on monitor sync.');
+}
+// The token and the monitor list travel on every poll: warn if that would cross the internet unencrypted.
+function isPrivateHost(h) {
+  h = h.replace(/^\[|\]$/g, '').toLowerCase();
+  if (!h.includes('.') && !h.includes(':')) return true; // single-label name such as "raspberrypi"
+  if (/\.(local|lan|home|internal|localdomain)$/.test(h)) return true;
+  if (/^(10\.|127\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(h)) return true;
+  return h === '::1' || /^(fc|fd|fe80)/.test(h);
+}
+if (PEER_TOKEN) {
+  for (const u of PEER_URLS) {
+    let host = '';
+    try { host = new URL(u).hostname; } catch { /* already validated above */ }
+    if (/^http:\/\//i.test(u) && host && !isPrivateHost(host)) {
+      console.warn(`[peers] ${u} is plain http:// over a public address: the peer token and your monitor list would be sent unencrypted. Use https:// instead.`);
+    }
+  }
 }
 // Drop history left behind by deleted monitors or peers removed from PEERS.
 {
@@ -193,6 +215,22 @@ function uptimeSet(fn) {
 
 function showTargets(authed) { return authed || store.settings.publicShowTargets; }
 
+// The dashboard asks for /api/status every few seconds from every open tab, and building it walks all
+// the check history. Compute it at most every 2 seconds (per visitor type); anything changed through
+// the API clears the cache so the UI never shows stale data after its own actions.
+const statusCache = new Map();
+function statusParts(authed) {
+  const key = authed ? 'admin' : 'public';
+  const hit = statusCache.get(key);
+  if (hit && Date.now() - hit.t < 2000) return hit.data;
+  const monitors = store.monitors.map(m => monitorSummary(m, authed));
+  const counts = { up: 0, down: 0, pending: 0, paused: 0 };
+  for (const m of monitors) counts[m.status] = (counts[m.status] || 0) + 1;
+  const data = { self: selfSummary(authed), counts, monitors, peers: peerSummaries(authed) };
+  statusCache.set(key, { t: Date.now(), data });
+  return data;
+}
+
 function monitorSummary(m, authed) {
   const h = store.history[m.id] || { raw: [], status: 'pending' };
   const last = h.raw[h.raw.length - 1];
@@ -279,6 +317,7 @@ function peerSummaries(authed) {
     reachable: p.reachable,
     error: p.error,
     checkedAt: p.checkedAt,
+    lastSeen: p.lastSeen,
     version: p.version,
     self: p.self,
     observedUptime: uptimeSet(w => store.uptime(p.id, w)),
@@ -317,16 +356,19 @@ function redirect(res, location, headers = {}) {
   res.end();
 }
 
-function readBody(req) {
+function readBody(req, limit = 100 * 1024) {
   return new Promise((resolve, reject) => {
     let size = 0;
+    let tooBig = false;
     const chunks = [];
     req.on('data', c => {
+      if (tooBig) return; // keep draining so the client still gets our 413 instead of a dropped connection
       size += c.length;
-      if (size > 100 * 1024) { reject(Object.assign(new Error('Body too large'), { status: 413 })); req.destroy(); return; }
+      if (size > limit) { tooBig = true; chunks.length = 0; reject(Object.assign(new Error(`Request too large (limit ${Math.round(limit / 1024)} KB)`), { status: 413 })); return; }
       chunks.push(c);
     });
     req.on('end', () => {
+      if (tooBig) return;
       if (!chunks.length) return resolve({});
       let data;
       try { data = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { return reject(Object.assign(new Error('Invalid JSON'), { status: 400 })); }
@@ -395,10 +437,12 @@ function serveStatic(req, res, pathname) {
 // ---------------------------------------------------------------- routes
 
 async function handleApi(req, res, url) {
-  const user = auth.user(req, clientIp(req));
-  const authed = Boolean(user);
   const method = req.method;
   const p = url.pathname.replace(/\/+$/, '') || '/';
+  // /api/peer-status has its own token. Its Authorization header is not an admin credential, so it
+  // must not be tried as one (that would count every peer poll as a failed admin-password guess).
+  const user = p === '/api/peer-status' ? null : auth.user(req, clientIp(req));
+  const authed = Boolean(user);
   const needAuth = () => { if (!authed) { send(res, 401, { error: 'Login required' }); return true; } return false; };
   const needJson = () => {
     // Cheap CSRF protection: browsers cannot send application/json cross-site without a CORS preflight.
@@ -406,6 +450,7 @@ async function handleApi(req, res, url) {
     return false;
   };
   const canView = authed || store.settings.publicDashboard;
+  if (method !== 'GET' && method !== 'HEAD') res.on('finish', () => statusCache.clear());
 
   // Health check for Docker / external monitors. Always public.
   if (p === '/api/health' && (method === 'GET' || method === 'HEAD')) {
@@ -416,7 +461,7 @@ async function handleApi(req, res, url) {
   // never includes monitors, targets or host details - only this server's own uptime record.
   if (p === '/api/peer-status' && (method === 'GET' || method === 'HEAD')) {
     if (!peerHub.authorizeIncoming(req, clientIp(req))) return send(res, 401, { error: 'Invalid or missing peer token' });
-    const payload = { name: store.settings.title, version: VERSION, time: Date.now(), self: selfSummary(false) };
+    const payload = { name: serverName(), version: VERSION, time: Date.now(), self: selfSummary(false) };
     // Monitor definitions (with their targets) only go to peers that proved they hold the shared token.
     if (PEER_TOKEN) { payload.monitors = store.monitors; payload.deleted = store.tombstones; }
     return send(res, 200, payload);
@@ -429,23 +474,24 @@ async function handleApi(req, res, url) {
       user: user ? { name: user.name, email: user.email || null, picture: user.picture || null, method: user.method } : null,
       auth: auth.methods(),
       publicDashboard: store.settings.publicDashboard,
+      serverName: serverName(),
+      sync: SYNC_MONITORS,
       version: VERSION,
       serverTime: Date.now(),
     };
     if (!canView) return send(res, 200, { ...base, locked: true });
-    const monitors = store.monitors.map(m => monitorSummary(m, authed));
-    const counts = { up: 0, down: 0, pending: 0, paused: 0 };
-    for (const m of monitors) counts[m.status] = (counts[m.status] || 0) + 1;
-    return send(res, 200, { ...base, self: selfSummary(authed), counts, monitors, peers: peerSummaries(authed) });
+    return send(res, 200, { ...base, ...statusParts(authed) });
   }
 
   // ---- password login
   if (p === '/api/login' && method === 'POST') {
     if (needJson()) return;
     if (!auth.passwordLogin) return send(res, 403, { error: 'Password login is disabled. Sign in with Google.' });
-    if (auth.rateLimited(clientIp(req))) return send(res, 429, { error: 'Too many attempts, wait a minute' });
+    const ip = clientIp(req);
+    if (auth.loginBlocked(ip)) return send(res, 429, { error: 'Too many wrong passwords - wait a minute and try again' });
     const body = await readBody(req);
-    if (!auth.check(body.password)) return send(res, 401, { error: 'Wrong password' });
+    if (!auth.check(body.password)) { auth.loginFailed(ip); return send(res, 401, { error: 'Wrong password' }); }
+    auth.loginSucceeded(ip);
     const token = auth.createSession({ method: 'password', name: 'Admin' });
     return send(res, 200, { ok: true }, { 'Set-Cookie': auth.cookie(token, isSecure(req)) });
   }
@@ -454,7 +500,9 @@ async function handleApi(req, res, url) {
   if (p === '/api/auth/google' && method === 'GET') {
     const home = PUBLIC_URL ? `${PUBLIC_URL}/` : '../../';
     if (!auth.google) return redirect(res, `${home}?login_error=google_disabled`);
-    if (auth.rateLimited(clientIp(req))) return redirect(res, `${home}?login_error=rate_limited`);
+    const ip = clientIp(req);
+    if (auth.starts.blocked(ip)) return redirect(res, `${home}?login_error=rate_limited`);
+    auth.starts.hit(ip);
     const { url: googleUrl, cookie } = auth.googleStart(`${baseUrl(req)}/api/auth/google/callback`, isSecure(req));
     return redirect(res, googleUrl, { 'Set-Cookie': cookie });
   }
@@ -487,6 +535,7 @@ async function handleApi(req, res, url) {
       return send(res, 200, {
         ...store.settings,
         envWebhooks: Boolean(process.env.NOTIFY_WEBHOOK_URL),
+        peers: { count: PEER_URLS.length, sync: SYNC_MONITORS },
         auth: { ...auth.methods(), adminEmails: auth.google ? auth.google.admins : [], passwordSource: auth.source },
       });
     }
@@ -504,6 +553,7 @@ async function handleApi(req, res, url) {
         s.webhooks = list.slice(0, 20);
       }
       if ('title' in body) s.title = String(body.title ?? '').trim().slice(0, 100) || 'Uptime Monitor';
+      if ('serverName' in body) s.serverName = String(body.serverName ?? '').trim().slice(0, 100);
       if ('publicShowTargets' in body) s.publicShowTargets = bool(body.publicShowTargets);
       if ('publicDashboard' in body) s.publicDashboard = bool(body.publicDashboard);
       store.saveSettings();
@@ -526,10 +576,11 @@ async function handleApi(req, res, url) {
 
   if (p === '/api/import' && method === 'POST') {
     if (needAuth() || needJson()) return;
-    const body = await readBody(req);
+    const body = await readBody(req, 2 * 1024 * 1024);
     const list = Array.isArray(body) ? body : body.monitors;
     if (!Array.isArray(list)) return send(res, 400, { error: 'Expected { "monitors": [...] }' });
     if (list.length > 500) return send(res, 400, { error: 'Too many monitors in one import (max 500)' });
+    if (store.monitors.length + list.length > 1000) return send(res, 400, { error: 'Too many monitors (max 1000 in total)' });
     const added = [];
     for (const [i, item] of list.entries()) {
       const { monitor, errors } = validateMonitor(item, newMonitor({}));
@@ -588,12 +639,17 @@ async function handleApi(req, res, url) {
     if (method === 'PUT') {
       if (needAuth() || needJson()) return;
       const body = await readBody(req);
-      const { monitor, errors } = validateMonitor(body, m);
+      // Look the monitor up again: while the body was arriving, a peer sync or another request may
+      // have changed, moved or deleted it, and the position found earlier could now be a different one.
+      const at = store.monitors.findIndex(x => x.id === id);
+      if (at === -1) return send(res, 404, { error: 'Monitor not found (it was deleted)' });
+      const current = store.monitors[at];
+      const { monitor, errors } = validateMonitor(body, current);
       if (errors.length) return send(res, 400, { error: errors.join('. ') });
       monitor.updatedAt = Date.now();
-      const targetChanged = monitor.type !== m.type || monitor.target !== m.target || monitor.port !== m.port;
-      const pausedNow = monitor.paused && !m.paused;
-      store.monitors[idx] = monitor;
+      const targetChanged = monitor.type !== current.type || monitor.target !== current.target || monitor.port !== current.port;
+      const pausedNow = monitor.paused && !current.paused;
+      store.monitors[at] = monitor;
       store.saveMonitors();
       if (targetChanged || pausedNow) scheduler.reset(id);
       scheduler.schedule(monitor, 200);
@@ -624,7 +680,7 @@ const server = http.createServer(async (req, res) => {
     return serveStatic(req, res, url.pathname);
   } catch (err) {
     if (!err.status) console.error('[http]', err);
-    if (!res.headersSent) send(res, err.status || 500, { error: err.status ? err.message : 'Internal server error' });
+    if (!res.headersSent) send(res, err.status || 500, { error: err.status ? err.message : 'Internal server error' }, err.status === 413 ? { Connection: 'close' } : {});
   }
 });
 
@@ -636,6 +692,11 @@ server.on('error', err => {
   else console.error(err);
   process.exit(1);
 });
+
+// Longer than typical reverse-proxy idle timeouts (nginx, Cloudflare, load balancers), so a proxy
+// reusing an idle connection doesn't hit one we just closed and answer 502.
+server.keepAliveTimeout = 65e3;
+server.headersTimeout = 66e3;
 
 server.listen(PORT, HOST, () => {
   // Start monitoring only once the web server is up.

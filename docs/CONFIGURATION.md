@@ -25,6 +25,7 @@ Set them in your shell, in Docker/Compose, in `/etc/uptime-monitor.env` (systemd
 | `PASSWORD_LOGIN` | auto | Password sign-in. Default: on without Google, off with Google. |
 | `DATA_DIR` | `./data` | Storage folder. Relative paths are relative to the app folder. Docker image default: `/data`. systemd install: `/var/lib/uptime-monitor`. |
 | `SITE_TITLE` | `Uptime Monitor` | Site title used on first start. After that, change it in Settings. |
+| `SERVER_NAME` | site title | Name other servers show for this one when you run several ([peer servers](#peer-servers-multi-server--federation)). After the first start, change it in Settings. |
 | `PUBLIC_DASHBOARD` | `true` | Initial "public dashboard" setting used on first start (`false` = login required to see anything). After that, change it in Settings. |
 | `NOTIFY_WEBHOOK_URL` | | One or more webhook URLs, comma-separated. Always used, in addition to the webhooks entered in Settings. |
 | `TRUST_PROXY` | `false` | Trust `X-Forwarded-For` / `X-Forwarded-Proto` / `X-Forwarded-Host` headers. Enable only behind a reverse proxy. The client IP (used for login rate limits) is the last `X-Forwarded-For` entry, i.e. the one your proxy added. |

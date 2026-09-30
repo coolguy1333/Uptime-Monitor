@@ -120,9 +120,14 @@ function recentBars(checks, count = 40) {
 function renderOverall(d) {
   const el = $('#overall');
   const c = d.counts;
+  const peers = d.peers || [];
+  const peersDown = peers.filter(p => p.checkedAt && !p.reachable).length;
   const total = d.monitors.length;
+  const problems = [];
+  if (c.down) problems.push(`${c.down} monitor${c.down > 1 ? 's' : ''} down`);
+  if (peersDown) problems.push(`${peersDown} server${peersDown > 1 ? 's' : ''} unreachable`);
   let cls = 'ok', title = 'All systems operational';
-  if (c.down) { cls = 'bad'; title = `${c.down} monitor${c.down > 1 ? 's' : ''} down`; }
+  if (problems.length) { cls = 'bad'; title = problems.join(' · '); }
   else if (c.pending) { cls = 'warn'; title = 'Some checks are pending'; }
   else if (!total) { cls = ''; title = 'No monitors configured'; }
   else if (!c.up && c.paused === total) { cls = ''; title = 'All monitors are paused'; }
@@ -132,8 +137,10 @@ function renderOverall(d) {
   if (c.down) parts.push(`${c.down} down`);
   if (c.pending) parts.push(`${c.pending} pending`);
   if (c.paused) parts.push(`${c.paused} paused`);
+  if (peers.length) parts.push(`${peers.length + 1 - peersDown} of ${peers.length + 1} servers online`);
   $('.overall-sub', el).textContent = `${parts.join(' · ')} — updated ${new Date().toLocaleTimeString()}`;
-  document.title = c.down ? `(${c.down} down) ${d.title}` : d.title;
+  const downCount = c.down + peersDown;
+  document.title = downCount ? `(${downCount} down) ${d.title}` : d.title;
 }
 
 function renderSelf(d) {
@@ -153,7 +160,7 @@ function renderSelf(d) {
   el.innerHTML = `
     <div class="self-top">
       <div>
-        <div class="self-label">This server</div>
+        <div class="self-label">This server${(d.peers || []).length && d.serverName ? ` · ${esc(d.serverName)}` : ''}</div>
         <div class="self-uptime"><span class="dot up" style="display:inline-block;margin-right:10px;vertical-align:2px"></span>Online for <span id="selfUptime">${duration(s.processUptime)}</span></div>
         <div class="self-since">Started ${esc(fmtDate(s.startedAt))} · monitoring since ${esc(fmtDate(s.firstStart))}</div>
       </div>
@@ -185,29 +192,37 @@ function renderPeers(d) {
 
 function peerCard(p) {
   const s = p.self;
-  const uptime = s ? s.uptime : p.observedUptime;
-  const label = p.name || p.url;
-  const status = p.reachable
-    ? (s ? `Online for ${duration(s.processUptime)}` : 'Reachable')
-    : `Unreachable${p.checkedAt ? ` — last seen ${ago(p.checkedAt)}` : ''}${p.error ? ` (${p.error})` : ''}`;
+  const checked = Boolean(p.checkedAt);
+  const live = p.reachable && s;
+  // A server that is down can't report its own outage, so while it is unreachable show how it looks from here.
+  const uptime = live ? s.uptime : p.observedUptime;
+  const basis = live ? 'As reported by that server' : 'As seen from this server (that server is not answering)';
+  let host = '';
+  if (p.url) { try { host = new URL(p.url).host; } catch { host = p.url; } }
+  if (host === p.name) host = ''; // an unnamed peer is already labelled with its address
+  let status;
+  if (!checked) status = 'Checking…';
+  else if (p.reachable) status = s ? `Online for ${duration(s.processUptime)}` : 'Reachable';
+  else status = `Unreachable — ${p.error || 'no response'} · ${p.lastSeen ? `last seen ${ago(p.lastSeen)}` : 'not reached since this server started'}`;
+  const dot = !checked ? 'pending' : p.reachable ? 'up' : 'down';
   return `
   <article class="card peer">
     <div class="peer-top">
       <div class="peer-id">
-        <span class="dot ${p.reachable ? 'up' : 'down'}" title="${esc(p.reachable ? 'reachable' : 'unreachable')}"></span>
+        <span class="dot ${dot}" title="${esc(!checked ? 'checking' : p.reachable ? 'reachable' : 'unreachable')}"></span>
         <div>
-          <div class="peer-name">${esc(label)}</div>
+          <div class="peer-name">${esc(p.name || 'Server')}${host ? `<span class="peer-host">${esc(host)}</span>` : ''}</div>
           <div class="peer-status muted">${esc(status)}</div>
         </div>
       </div>
-      <div class="stats">
+      <div class="stats" title="${esc(basis)}">
         <div class="stat"><div class="k">24h</div><div class="v">${pct(uptime['24h'])}</div></div>
         <div class="stat"><div class="k">7d</div><div class="v">${pct(uptime['7d'])}</div></div>
         <div class="stat"><div class="k">30d</div><div class="v">${pct(uptime['30d'])}</div></div>
         <div class="stat"><div class="k">90d</div><div class="v">${pct(uptime['90d'])}</div></div>
       </div>
     </div>
-    ${s ? `<div>${daysBars(s.daily, { label: false })}</div>` : '<p class="muted">No status reported by this peer yet.</p>'}
+    ${s ? `<div>${daysBars(s.daily, { label: false })}</div>` : ''}
   </article>`;
 }
 
@@ -229,6 +244,14 @@ function monitorRow(m) {
     </div>
     ${open ? `<div class="detail" id="detail-${m.id}">${detailHtml(m)}</div>` : ''}
   </article>`;
+}
+
+// Short label for the Status box; statusText() below is the longer description used in the list.
+function statusLabel(m) {
+  if (m.status === 'paused') return 'Paused';
+  if (m.status === 'down') return m.downSince ? `Down for ${duration((Date.now() - m.downSince) / 1000)}` : 'Down';
+  if (m.status === 'pending') return m.last ? 'Retrying' : 'Pending';
+  return 'Up';
 }
 
 function statusText(m) {
@@ -274,7 +297,9 @@ function detailHtml(m) {
   const d = state.details.get(m.id);
   const authed = state.data.authed;
   const cert = m.cert ? `<div class="stat"><div class="k">TLS cert expires</div><div class="v ${m.cert.daysLeft < 14 ? 'pct-bad' : m.cert.daysLeft < 30 ? 'pct-warn' : ''}">${m.cert.daysLeft} days</div></div>` : '';
-  const err = m.last && !m.last.ok ? `<div class="error-line">Last check failed: ${esc(m.last.msg)}</div>` : '';
+  const err = !m.last ? '' : m.last.ok
+    ? `<div class="note">Last check: ${esc(m.last.msg)}</div>`
+    : `<div class="error-line">Last check failed: ${esc(m.last.msg)}</div>`;
   const actions = authed ? `
     <div class="detail-actions">
       <button class="btn small" data-action="check">Check now</button>
@@ -289,7 +314,7 @@ function detailHtml(m) {
   return `
     ${err}
     <div class="stats">
-      <div class="stat"><div class="k">Status</div><div class="v" title="${esc(statusText(m))}">${esc(statusText(m).slice(0, 40)) || '—'}</div></div>
+      <div class="stat"><div class="k">Status</div><div class="v" title="${esc(statusText(m))}">${esc(statusLabel(m))}</div></div>
       <div class="stat"><div class="k">Response</div><div class="v">${m.last && m.last.ok ? ms(m.last.ms) : '—'}</div></div>
       <div class="stat"><div class="k">Avg (24h)</div><div class="v">${ms(m.avgMs24h)}</div></div>
       <div class="stat"><div class="k">Uptime 7d</div><div class="v">${pct(m.uptime['7d'])}</div></div>
@@ -298,7 +323,7 @@ function detailHtml(m) {
       ${cert}
     </div>
     <div>
-      <h3>Response time (24h) · checked every ${duration(m.interval)} · last ${ago(m.last && m.last.t)}</h3>
+      <h3>Response time (24h) · checked every ${duration(m.interval)}${m.last ? ` · last check ${ago(m.last.t)}` : ''}</h3>
       <div class="chart" data-chart="${m.id}">${d ? chartSvg(d.checks24h) : '<p class="muted">Loading…</p>'}</div>
     </div>
     <div class="two-col">
@@ -338,6 +363,7 @@ function render() {
   renderPeers(d);
   renderMonitors(d);
   $('#empty [data-action="add"]').hidden = !d.authed;
+  $('#emptySync').hidden = !d.sync;
 }
 
 function renderUser(d) {
@@ -357,6 +383,7 @@ function openLogin() {
   const m = (state.data && state.data.auth) || { google: false, password: true };
   $('#googleLogin').hidden = !m.google;
   $('#loginGoogleHint').hidden = !m.google;
+  $('#loginNoPasswordHint').hidden = m.password;
   $('#loginForm').hidden = !m.password;
   $('#loginDivider').hidden = !(m.google && m.password);
   $('#loginNone').hidden = m.google || m.password;
@@ -477,6 +504,7 @@ function openMonitorDialog(m) {
     else el.value = c[el.name] ?? '';
   }
   syncTypeFields();
+  $('#syncHint').hidden = !(state.data && state.data.sync);
   openDialog('#monitorDialog');
   form.name.focus();
 }
@@ -496,7 +524,8 @@ $('#monitorForm').addEventListener('submit', async e => {
       ? await api(`api/monitors/${state.editingId}`, { method: 'PUT', body })
       : await api('api/monitors', { method: 'POST', body });
     $('#monitorDialog').close();
-    toast(state.editingId ? 'Monitor updated' : 'Monitor added');
+    const synced = state.data && state.data.sync ? ' — syncing to your other servers' : '';
+    toast(`${state.editingId ? 'Monitor updated' : 'Monitor added'}${synced}`);
     state.open.add(saved.id);
     setTimeout(refresh, 1500);
     refresh();
@@ -533,16 +562,22 @@ async function openSettings() {
     const s = await api('api/settings');
     const form = $('#settingsForm');
     form.title.value = s.title;
+    form.serverName.value = s.serverName || '';
+    $('#serverNameField').hidden = !(s.peers && s.peers.count);
     form.webhooks.value = (s.webhooks || []).join('\n');
     form.publicDashboard.checked = s.publicDashboard;
     form.publicShowTargets.checked = s.publicShowTargets;
     $('#envWebhookHint').hidden = !s.envWebhooks;
     const a = s.auth || {};
+    const peers = s.peers || {};
     const who = state.data && state.data.user;
     $('#authInfo').innerHTML = [
       who ? `<div>Signed in as <b>${esc(who.email || who.name)}</b>${who.method === 'google' ? ' (Google)' : who.method === 'password' ? ' (password)' : ''}</div>` : '',
       `<div>Google sign-in: <b>${a.google ? 'on' : 'off'}</b>${a.google ? ` — admins: ${esc((a.adminEmails || []).join(', ') || 'none (set ADMIN_EMAILS)')}` : ' — set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and ADMIN_EMAILS to enable'}</div>`,
       `<div>Password login: <b>${a.password ? 'on' : 'off'}</b> · API token / password from ${esc(a.passwordSource || '')}</div>`,
+      peers.count
+        ? `<div>Other servers: <b>${peers.count}</b> · monitor sync: <b>${peers.sync ? 'on' : 'off'}</b>${peers.sync ? '' : ' — set the same PEER_TOKEN on every server to turn it on'}</div>`
+        : '<div>Other servers: <b>none</b> — set PEERS (and PEER_TOKEN) to show and sync other servers</div>',
     ].join('');
     openDialog('#settingsDialog');
   } catch (err) { toast(err.message, true); }
@@ -554,7 +589,7 @@ $('#settingsForm').addEventListener('submit', async e => {
   try {
     await api('api/settings', {
       method: 'PUT',
-      body: { title: form.title.value, webhooks: form.webhooks.value, publicDashboard: form.publicDashboard.checked, publicShowTargets: form.publicShowTargets.checked },
+      body: { title: form.title.value, serverName: form.serverName.value, webhooks: form.webhooks.value, publicDashboard: form.publicDashboard.checked, publicShowTargets: form.publicShowTargets.checked },
     });
     $('#settingsDialog').close();
     toast('Settings saved');
@@ -620,7 +655,8 @@ document.addEventListener('click', async e => {
       await api(`api/monitors/${id}`, { method: 'PUT', body: { paused: !m.paused } });
       toast(m.paused ? 'Monitor resumed' : 'Monitor paused');
     } else if (action === 'delete') {
-      if (!confirm(`Delete "${m.name}" and all of its history?`)) return;
+      const also = state.data.sync ? '\n\nIt will also be deleted from your other servers.' : '';
+      if (!confirm(`Delete "${m.name}" and all of its history?${also}`)) return;
       await api(`api/monitors/${id}`, { method: 'DELETE' });
       state.open.delete(id);
       state.details.delete(id);

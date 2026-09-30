@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.2.0
+
+### Added
+- **Multiple servers.** Point servers at each other with `PEERS` (and a shared `PEER_TOKEN`) and every dashboard shows an **Other servers** panel with each server's status and uptime. Give each server a name with `SERVER_NAME` or in Settings. See `docs/CONFIGURATION.md#peer-servers-multi-server--federation`.
+- **Monitor sync.** With the same `PEER_TOKEN` on every server, monitors you add, edit, pause or delete on one server appear on all of them. Each server still runs its own checks and keeps its own history.
+- Ping monitors fall back to TCP checks (ports 443, 80, 53) when ICMP isn't available, for example inside WebManager or a container without `NET_RAW`, or when the `ping` program isn't installed.
+- `webmanager.json`, so the app deploys as an app in WebManager.
+- The top banner also reports servers that are unreachable, and the monitor and settings screens explain what is synced and what the fields do.
+- Clear messages when a peer can't be reached: wrong token, wrong address, redirect, refused, not responding.
+- Ping "Status" is now a short label, with the full last-check message on its own line.
+
+### Fixed
+- Behind a reverse proxy, login rate limits could be bypassed by sending a fake `X-Forwarded-For` header. Wrong guesses of the admin password and of the API token now share one budget of 10 per minute per address, successful logins are never counted, and Google sign-in has its own limit.
+- The admin password and API token could be guessed without limit through the `Authorization` header.
+- `/api/peer-status` requests were counted as failed admin logins.
+- Editing a monitor while a peer sync or another request changed the list could overwrite the wrong monitor.
+- Imports larger than 100 KB failed with a dropped connection; the limit is now 2 MB and oversized requests get a proper error.
+- Peer data is validated before it reaches the dashboard, peer responses are size-limited, and a peer with a wrong clock can no longer win every conflict or delete monitors.
+- A poll timer leaked on every peer poll.
+- Peer addresses were shown to public visitors even with "Show URLs / IP addresses to public visitors" off.
+- `/api/logout` skipped the JSON content-type check.
+- Data files that parse but have the wrong shape (for example `null`) no longer crash startup; history left by deleted monitors is cleaned up.
+- The CDN in front of WebManager cached the page's script for 4 hours, so updates didn't show. The page now loads them under a versioned address.
+- `/api/status` is computed at most every 2 seconds, so a busy public dashboard is cheap to serve.
+- Idle keep-alive connections no longer end just before a reverse proxy reuses them.
+
 ## 1.1.0
 
 ### Added
